@@ -1,139 +1,124 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Упрощённый Subway Surfers</title>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #87CEEB;
-        }
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-        #game {
-            position: relative;
-            width: 100%;
-            height: 100vh;
-        }
+type PhysicsMaterial = "metal" | "flesh" | "wood" | "plastic";
 
-        #player {
-            position: absolute;
-            bottom: 50px;
-            left: 50px;
-            width: 50px;
-            height: 50px;
-            background-color: red;
-            transition: bottom 0.2s;
-        }
+let objects = [];
+let isDragging = false;
+let selectedObject = null;
 
-        .obstacle {
-            position: absolute;
-            bottom: 0;
-            width: 50px;
-            height: 50px;
-            background-color: green;
-        }
+class PhysicsObject {
+    constructor(x, y, width, height, color, material) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.color = color;
+        this.material = material;
+        this.velocityY = 0;
+        this.gravity = 0.5;
+        this.dragging = false;
+        this.health = material === "flesh" ? 100 : Infinity;
+        this.isStatic = material === "metal";
+    }
 
-        #score {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            font-size: 24px;
-            color: white;
-            font-family: Arial, sans-serif;
-        }
-    </style>
-</head>
-<body>
-    <div id="game">
-        <div id="player"></div>
-        <div id="score">Счёт: 0</div>
-    </div>
+    update() {
+        if (!this.dragging && !this.isStatic) {
+            this.velocityY += this.gravity;
+            this.y += this.velocityY;
 
-    <script>
-        const game = document.getElementById('game');
-        const player = document.getElementById('player');
-        const scoreElement = document.getElementById('score');
-        let score = 0;
-        let isJumping = false;
-
-        // Управление прыжком
-        document.addEventListener('keydown', (event) => {
-            if (event.code === 'Space' && !isJumping) {
-                jump();
+            if (this.y + this.height > canvas.height) {
+                this.y = canvas.height - this.height;
+                this.velocityY *= -0.5;
             }
-        });
-
-        function jump() {
-            isJumping = true;
-            let jumpHeight = 0;
-            const jumpInterval = setInterval(() => {
-                if (jumpHeight >= 100) {
-                    clearInterval(jumpInterval);
-                    fall();
-                } else {
-                    jumpHeight += 5;
-                    player.style.bottom = `${50 + jumpHeight}px`;
-                }
-            }, 20);
         }
+    }
 
-        function fall() {
-            let fallHeight = 100;
-            const fallInterval = setInterval(() => {
-                if (fallHeight <= 0) {
-                    clearInterval(fallInterval);
-                    isJumping = false;
-                } else {
-                    fallHeight -= 5;
-                    player.style.bottom = `${50 + fallHeight}px`;
-                }
-            }, 20);
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    contains(mx, my) {
+        return mx > this.x && mx < this.x + this.width && my > this.y && my < this.y + this.height;
+    }
+}
+
+canvas.addEventListener("mousedown", (e) => {
+    for (let obj of objects) {
+        if (obj.contains(e.clientX, e.clientY)) {
+            isDragging = true;
+            selectedObject = obj;
+            obj.dragging = true;
+            break;
         }
+    }
+});
 
-        // Создание препятствий
-        function createObstacle() {
-            const obstacle = document.createElement('div');
-            obstacle.classList.add('obstacle');
-            obstacle.style.left = `${Math.random() * (window.innerWidth - 50)}px`;
-            game.appendChild(obstacle);
+canvas.addEventListener("mousemove", (e) => {
+    if (isDragging && selectedObject) {
+        selectedObject.x = e.clientX - selectedObject.width / 2;
+        selectedObject.y = e.clientY - selectedObject.height / 2;
+    }
+});
 
-            const moveInterval = setInterval(() => {
-                const obstacleBottom = parseInt(obstacle.style.bottom || '0');
-                if (obstacleBottom >= window.innerHeight - 50) {
-                    clearInterval(moveInterval);
-                    game.removeChild(obstacle);
-                    score++;
-                    scoreElement.textContent = `Счёт: ${score}`;
-                } else {
-                    obstacle.style.bottom = `${obstacleBottom + 5}px`;
-                }
+canvas.addEventListener("mouseup", () => {
+    if (selectedObject) selectedObject.dragging = false;
+    isDragging = false;
+    selectedObject = null;
+});
 
-                // Проверка столкновения
-                if (checkCollision(player, obstacle)) {
-                    alert(`Игра окончена! Ваш счёт: ${score}`);
-                    clearInterval(moveInterval);
-                    location.reload();
-                }
-            }, 20);
+function spawnObject(x, y, material = "metal") {
+    let color = "gray";
+    if (material === "flesh") color = "pink";
+    if (material === "wood") color = "brown";
+    if (material === "plastic") color = "blue";
+    
+    let obj = new PhysicsObject(x, y, 50, 50, color, material);
+    objects.push(obj);
+}
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === " ") {
+        spawnObject(Math.random() * canvas.width, 50, "flesh");
+    }
+    if (e.key === "m") {
+        spawnObject(Math.random() * canvas.width, 50, "metal");
+    }
+    if (e.key === "w") {
+        spawnObject(Math.random() * canvas.width, 50, "wood");
+    }
+    if (e.key === "p") {
+        spawnObject(Math.random() * canvas.width, 50, "plastic");
+    }
+});
+
+function applyExplosion(x, y, radius, force) {
+    for (let obj of objects) {
+        let dx = obj.x + obj.width / 2 - x;
+        let dy = obj.y + obj.height / 2 - y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < radius) {
+            let power = (1 - distance / radius) * force;
+            obj.velocityY -= power;
         }
+    }
+}
 
-        // Проверка столкновения
-        function checkCollision(player, obstacle) {
-            const playerRect = player.getBoundingClientRect();
-            const obstacleRect = obstacle.getBoundingClientRect();
+canvas.addEventListener("click", (e) => {
+    applyExplosion(e.clientX, e.clientY, 100, 10);
+});
 
-            return !(
-                playerRect.bottom < obstacleRect.top ||
-                playerRect.top > obstacleRect.bottom ||
-                playerRect.right < obstacleRect.left ||
-                playerRect.left > obstacleRect.right
-            );
-        }
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let obj of objects) {
+        obj.update();
+        obj.draw();
+    }
+    requestAnimationFrame(gameLoop);
+}
 
-        // Генерация препятствий
-        setInterval(createObstacle, 2000);
-    </script>
-</body>
-</html>
+gameLoop();
